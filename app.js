@@ -227,7 +227,11 @@ function renderCdfStd(series) {
     return {
       x, y, mode: 'lines', name: `${s.name} (mean ${s.rec.mean.toFixed(1)})`,
       line: { color: rgb(s.i), width: 2 },
-      hovertemplate: '%{x:.1f} pts<br>P(≥)=%{y:.2f}<extra>' + s.name + '</extra>',
+      // On a unified-x hover the two players sit on DIFFERENT point grids, so
+      // printing each trace's own %{x} shows two slightly different "pts" at the
+      // same cursor. Show only the probability per player here; the shared point
+      // total comes from the x-axis spike label below.
+      hovertemplate: 'P(≥) = %{y:.2f}<extra>' + s.name + '</extra>',
     };
   });
   const shapes = [];
@@ -244,7 +248,13 @@ function renderCdfStd(series) {
   }));
   Plotly.newPlot('chart-cdf-std', traces, {
     margin: { t: 18, r: 10, b: 72, l: 50 },
-    xaxis: { title: 'fantasy points', fixedrange: true },
+    xaxis: {
+      title: 'fantasy points', fixedrange: true,
+      // A unified spike labels the single shared point total on the axis, so the
+      // tooltip rows only need to carry each player's probability.
+      showspikes: true, spikemode: 'across+marker', spikesnap: 'cursor',
+      spikethickness: 1, spikedash: 'solid', spikecolor: '#888',
+    },
     yaxis: { title: 'P(score ≥ x)', range: [0, 1], fixedrange: true },
     template: 'plotly_white', hovermode: 'x unified', dragmode: false, shapes, annotations,
     legend: { orientation: 'h', y: -0.3, yanchor: 'top' },
