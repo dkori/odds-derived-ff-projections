@@ -277,40 +277,19 @@ function renderDiff(series) {
   const hiColor = rgb(hiIdx);
   const loColor = rgb(loIdx);
 
-  // Split the curve into a "hi ahead" (diff >= 0) and a "lo ahead" (diff <= 0)
-  // trace, each drawn/filled only where that player is actually ahead. Points
-  // outside a side's region are null (NOT 0) so Plotly SKIPS them — otherwise a
-  // dominated side would render as a flat colored line sitting on the zero axis,
-  // which reads as "that player is ahead/level at the start" even when they're
-  // beaten at every percentile. Boundary zeros are kept so each fill still hugs
-  // the zero line at the crossover.
-  const EPS = 1e-9;
-  const posY = diff.map((d, i) => {
-    if (d > EPS) return d;
-    // keep a 0 anchor only where this side borders its region (crossover)
-    const prev = i > 0 ? diff[i - 1] : d;
-    const next = i < diff.length - 1 ? diff[i + 1] : d;
-    return (prev > EPS || next > EPS) ? 0 : null;
-  });
-  const negY = diff.map((d, i) => {
-    if (d < -EPS) return d;
-    const prev = i > 0 ? diff[i - 1] : d;
-    const next = i < diff.length - 1 ? diff[i + 1] : d;
-    return (prev < -EPS || next < -EPS) ? 0 : null;
-  });
+  const posY = diff.map((d) => (d >= 0 ? d : 0));
+  const negY = diff.map((d) => (d <= 0 ? d : 0));
 
   const posTrace = {
     x, y: posY, mode: 'lines', name: `${hiName} ahead`,
     line: { color: hiColor, width: 2 },
     fill: 'tozeroy', fillcolor: rgba(hiIdx, 0.15),
-    connectgaps: false,
     hoverinfo: 'skip',
   };
   const negTrace = {
     x, y: negY, mode: 'lines', name: `${loName} ahead`,
     line: { color: loColor, width: 2 },
     fill: 'tozeroy', fillcolor: rgba(loIdx, 0.15),
-    connectgaps: false,
     hoverinfo: 'skip',
   };
   const hoverTrace = {
