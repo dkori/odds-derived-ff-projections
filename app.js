@@ -20,7 +20,7 @@ const PLOTLY_CONFIG = {
 };
 
 async function boot() {
-  const res = await fetch('data/projections_week5.json');
+  const res = await fetch('data/projections_week6.json');
   DATA = await res.json();
   // Only players we can actually chart (have a quantile grid).
   NAMES = Object.keys(DATA.players)
@@ -46,6 +46,7 @@ function wireControls() {
   const input = document.getElementById('search');
   const list = document.getElementById('matches');
   const posSel = document.getElementById('pos-filter');
+  const sortSel = document.getElementById('sort-mode');
   const trigger = document.getElementById('player-trigger');
   const panel = document.getElementById('player-panel');
 
@@ -56,13 +57,29 @@ function wireControls() {
     opts.push(`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`));
   posSel.innerHTML = opts.join('');
 
-  // Candidate names under the current position filter. A player is a candidate
-  // if their `positions` array includes the selected position (multi-eligible
-  // players show under each of their positions).
+  // Order a name list by the current sort mode. "mean" sorts by our projected
+  // mean descending (highest first) — the "who are the best options here"
+  // ordering; ties and missing means fall back to alphabetical for stability.
+  function applySort(names) {
+    if (sortSel && sortSel.value === 'mean') {
+      return names.slice().sort((a, b) => {
+        const ma = DATA.players[a].mean, mb = DATA.players[b].mean;
+        if (mb !== ma) return mb - ma;
+        return a.localeCompare(b);
+      });
+    }
+    return names; // NAMES is already alphabetical
+  }
+
+  // Candidate names under the current position filter, then ordered by the sort
+  // mode. A player is a candidate if their `positions` array includes the
+  // selected position (multi-eligible players show under each of their positions).
   function candidates() {
     const v = posSel.value;
-    if (v === '__all__') return NAMES;
-    return NAMES.filter((n) => (DATA.players[n].positions || []).includes(v));
+    const base = (v === '__all__')
+      ? NAMES
+      : NAMES.filter((n) => (DATA.players[n].positions || []).includes(v));
+    return applySort(base);
   }
 
   // Render the full candidate list (filtered by the in-panel search text).
@@ -99,6 +116,7 @@ function wireControls() {
 
   trigger.addEventListener('click', togglePanel);
   posSel.addEventListener('change', () => { input.value = ''; if (panel.classList.contains('open')) refreshMatches(); });
+  if (sortSel) sortSel.addEventListener('change', () => { if (panel.classList.contains('open')) refreshMatches(); });
   input.addEventListener('input', refreshMatches);
 
   list.addEventListener('click', (e) => {
@@ -125,8 +143,17 @@ function posLabel(name) {
 }
 
 function badge(name) {
+  const r = DATA.players[name];
   const label = posLabel(name);
-  return label ? ` <span class="mini-pos">${escapeHtml(label)}</span>` : '';
+  const parts = [];
+  // When sorting by our mean, surface the mean inline so the descending order
+  // is readable at a glance (e.g. scanning for the best RB).
+  const sortSel = document.getElementById('sort-mode');
+  if (sortSel && sortSel.value === 'mean' && r && typeof r.mean === 'number') {
+    parts.push(`<span class="mini-mean">${r.mean.toFixed(1)}</span>`);
+  }
+  if (label) parts.push(`<span class="mini-pos">${escapeHtml(label)}</span>`);
+  return parts.length ? ' ' + parts.join(' ') : '';
 }
 
 function addPlayer(name) {

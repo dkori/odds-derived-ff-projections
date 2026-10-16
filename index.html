@@ -19,6 +19,8 @@
       gap: 8px; align-items: stretch; }
     #pos-filter { width: 100%; padding: 10px 12px; font-size: 14px;
       border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); }
+    #sort-mode { width: 100%; padding: 10px 12px; font-size: 14px;
+      border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); }
     .player-select { position: relative; }
     #player-trigger { width: 100%; text-align: left; padding: 10px 12px; font-size: 15px;
       border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--muted);
@@ -37,6 +39,8 @@
     #matches li:hover { background: #f1f5f9; }
     #matches li.empty { color: var(--muted); font-style: italic; cursor: default; }
     .mini-pos { color: var(--muted); font-size: 11px; }
+    .mini-mean { color: #0a5ad6; font-size: 11px; font-weight: 600; min-width: 30px;
+      display: inline-block; text-align: right; }
     #chips { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; min-height: 10px; }
     .chip { background: #fff; border: 1px solid var(--line); border-radius: 10px;
       padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 180px; }
@@ -78,6 +82,10 @@
     <div class="picker">
       <select id="pos-filter" title="Filter the player list by position">
         <option value="__all__">All positions</option>
+      </select>
+      <select id="sort-mode" title="Order the player list">
+        <option value="name">Sort: name (A–Z)</option>
+        <option value="mean">Sort: our mean (high → low)</option>
       </select>
       <div class="player-select">
         <button id="player-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
