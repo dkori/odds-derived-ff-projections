@@ -1,0 +1,53 @@
+{
+  "id": "sample_rb_event_0001",
+  "sport_key": "americanfootball_nfl",
+  "commence_time": "2026-10-05T17:00:00Z",
+  "home_team": "Example Home",
+  "away_team": "Example Away",
+  "bookmakers": [
+    {
+      "key": "draftkings",
+      "title": "DraftKings",
+      "markets": [
+        {
+          "key": "player_rush_yds_alternate",
+          "outcomes": [
+            {"name": "Over", "description": "Sample RB", "point": 39.5, "price": -230},
+            {"name": "Under", "description": "Sample RB", "point": 39.5, "price": 180},
+            {"name": "Over", "description": "Sample RB", "point": 59.5, "price": -130},
+            {"name": "Under", "description": "Sample RB", "point": 59.5, "price": 100},
+            {"name": "Over", "description": "Sample RB", "point": 79.5, "price": 125},
+            {"name": "Under", "description": "Sample RB", "point": 79.5, "price": -155},
+            {"name": "Over", "description": "Sample RB", "point": 99.5, "price": 270},
+            {"name": "Under", "description": "Sample RB", "point": 99.5, "price": -360}
+          ]
+        },
+        {
+          "key": "player_receptions_alternate",
+          "outcomes": [
+            {"name": "Over", "description": "Sample RB", "point": 1.5, "price": -190},
+            {"name": "Under", "description": "Sample RB", "point": 1.5, "price": 150},
+            {"name": "Over", "description": "Sample RB", "point": 3.5, "price": 140},
+            {"name": "Under", "description": "Sample RB", "point": 3.5, "price": -175}
+          ]
+        },
+        {
+          "key": "player_reception_yds_alternate",
+          "outcomes": [
+            {"name": "Over", "description": "Sample RB", "point": 19.5, "price": -160},
+            {"name": "Under", "description": "Sample RB", "point": 19.5, "price": 125},
+            {"name": "Over", "description": "Sample RB", "point": 34.5, "price": 135},
+            {"name": "Under", "description": "Sample RB", "point": 34.5, "price": -170}
+          ]
+        },
+        {
+          "key": "player_anytime_td",
+          "outcomes": [
+            {"name": "Yes", "description": "Sample RB", "price": 120},
+            {"name": "No", "description": "Sample RB", "price": -150}
+          ]
+        }
+      ]
+    }
+  ]
+}

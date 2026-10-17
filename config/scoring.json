@@ -1,0 +1,8 @@
+{
+  "points_per_reception": 0.5,
+  "points_per_receiving_yard": 0.1,
+  "points_per_rushing_yard": 0.1,
+  "points_per_touchdown": 6.0,
+  "points_per_passing_yard": 0.04,
+  "points_per_passing_td": 4.0
+}

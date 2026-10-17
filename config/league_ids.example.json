@@ -1,0 +1,6 @@
+{
+  "_comment": "Season -> Yahoo fantasy league id. Yahoo re-issues a new league id each season even for the same league, so we key by season. Copy this to league_ids.json (gitignored) and fill in YOUR league ids, or pass --league-id / set $FFMC_LEAGUE_ID.",
+  "leagues": {
+    "2024": "123456"
+  }
+}

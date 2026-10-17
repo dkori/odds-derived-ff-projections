@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets & local config
+.env
+*.local
+
+# Cached odds responses (keep dir, ignore contents except samples)
+data/cache/*
+!data/cache/.gitkeep
+
+# Precomputed projection stores (regenerable via `ffmc slate`; keep dir only).
+# A durable example lives in data/samples/ instead.
+data/projections/*
+!data/projections/.gitkeep
+
+# Local-only archives of prior odds caches / stores (kept on disk until we move
+# to hosted storage; not versioned — these are large regenerable snapshots).
+data/cache_archive/
+
+# Generated plots (regenerable via scripts/plot_players.py; keep dir only)
+data/plots/*
+!data/plots/.gitkeep
+
+# Yahoo matchup scrapes: raw pages are PRIVATE (authenticated session content,
+# may embed your account email) and snapshots are personal league data. Never
+# commit either; keep the dirs only.
+data/yahoo/raw/*
+data/yahoo/*/matchup.json
+data/yahoo/**/*.html
+# crawled rosters + built player-week datasets are personal league data too
+data/yahoo/**/roster.json
+data/yahoo/**/player_weeks.json
+# session-9 counterfactual artifacts are personal league data too (contain team
+# display names / rosters). Regenerable from cache via scripts/ — keep local.
+data/yahoo/**/roster_with_owner.json
+data/yahoo/**/owners.json
+data/yahoo/**/position_directory.json
+data/yahoo/**/model_mean_median.json
+data/yahoo/**/counterfactual.json
+data/yahoo/**/counterfactual.csv
+# nflverse position cache (public data, but regenerable; no need to commit)
+data/nflverse/
+# session-6/7 backtest result dumps are personal league data too
+data/yahoo/**/backtest_full*.json
+data/yahoo/**/backtest_*onegame.json
+# editor lock files
+.~lock.*#
+
+# OS
+.DS_Store

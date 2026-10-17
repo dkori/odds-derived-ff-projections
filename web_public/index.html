@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Odds-Derived Fantasy Projections — Head-to-Head</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+  <style>
+    :root { --ink: #1f2933; --muted: #6b7684; --line: #e3e8ee; --accent: #1f77b4; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--ink); margin: 0; background: #fafbfc; }
+    header { padding: 20px 24px 8px; border-bottom: 1px solid var(--line); background: #fff; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: var(--muted); font-size: 13px; max-width: 760px; line-height: 1.5; }
+    #meta { color: var(--muted); font-size: 12px; margin-top: 8px; }
+    main { max-width: 980px; margin: 0 auto; padding: 20px 24px 60px; }
+    .picker { position: relative; margin-bottom: 12px; display: flex; flex-direction: column;
+      gap: 8px; align-items: stretch; }
+    #pos-filter { width: 100%; padding: 10px 12px; font-size: 14px;
+      border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); }
+    #sort-mode { width: 100%; padding: 10px 12px; font-size: 14px;
+      border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); }
+    .player-select { position: relative; }
+    #player-trigger { width: 100%; text-align: left; padding: 10px 12px; font-size: 15px;
+      border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--muted);
+      cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    #player-trigger::after { content: '▾'; color: var(--muted); font-size: 12px; }
+    #player-panel { display: none; position: absolute; z-index: 20; top: 100%; left: 0; right: 0;
+      margin-top: 4px; background: #fff; border: 1px solid var(--line); border-radius: 8px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.1); overflow: hidden; }
+    #player-panel.open { display: block; }
+    #search { width: 100%; padding: 10px 12px; font-size: 15px; border: none;
+      border-bottom: 1px solid var(--line); border-radius: 0; outline: none; }
+    #matches { list-style: none; margin: 0; padding: 0;
+      background: #fff; max-height: 260px; overflow: auto; }
+    #matches li { padding: 8px 12px; cursor: pointer; font-size: 14px; display: flex;
+      justify-content: space-between; align-items: center; gap: 10px; }
+    #matches li:hover { background: #f1f5f9; }
+    #matches li.empty { color: var(--muted); font-style: italic; cursor: default; }
+    .mini-pos { color: var(--muted); font-size: 11px; }
+    .mini-mean { color: #0a5ad6; font-size: 11px; font-weight: 600; min-width: 30px;
+      display: inline-block; text-align: right; }
+    #chips { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; min-height: 10px; }
+    .chip { background: #fff; border: 1px solid var(--line); border-radius: 10px;
+      padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 180px; }
+    .chip-name { font-weight: 600; font-size: 14px; }
+    .chip-stat { font-size: 12px; color: var(--muted); }
+    .chip-pos { font-size: 11px; color: #0a5ad6; font-weight: 600; letter-spacing: 0.02em; }
+    .chip-x { align-self: flex-end; margin-top: -22px; border: none; background: none;
+      font-size: 18px; cursor: pointer; color: var(--muted); line-height: 1; }
+    #hint { color: var(--muted); font-size: 14px; padding: 24px 0; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+    .panel { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+    .panel h2 { font-size: 15px; margin: 0 0 2px; }
+    .panel .explain { font-size: 12.5px; color: var(--muted); margin: 0 0 8px; line-height: 1.45; }
+    .chart { width: 100%; height: 330px; }
+    .panel.disabled { opacity: 0.55; }
+    #diff-note { font-size: 12px; color: var(--muted); margin-top: 6px; }
+    .legend-key { font-size: 11.5px; color: var(--muted); margin-top: 10px; }
+    .legend-key b { color: var(--ink); }
+    footer { color: var(--muted); font-size: 11.5px; max-width: 980px; margin: 0 auto;
+      padding: 0 24px 40px; line-height: 1.5; }
+    footer a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Odds-Derived Fantasy Projections — Head-to-Head</h1>
+    <div class="sub">
+      Every player's fantasy-point outcome is a <b>distribution</b> reconstructed from
+      sportsbook player-prop odds (de-vigged, then Monte-Carlo-simulated) — not a single
+      number. Pick two players to compare their full ranges, with the market-implied
+      mean/median and Yahoo's point projection side by side. Filter by position to narrow
+      the search.
+    </div>
+    <div id="meta"></div>
+  </header>
+
+  <main>
+    <div class="picker">
+      <select id="pos-filter" title="Filter the player list by position">
+        <option value="__all__">All positions</option>
+      </select>
+      <select id="sort-mode" title="Order the player list">
+        <option value="name">Sort: name (A–Z)</option>
+        <option value="mean">Sort: our mean (high → low)</option>
+      </select>
+      <div class="player-select">
+        <button id="player-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+          <span id="player-trigger-label">Select a player…</span>
+        </button>
+        <div id="player-panel">
+          <input id="search" type="text" autocomplete="off" inputmode="search"
+                 placeholder="Type to filter…" />
+          <ul id="matches"></ul>
+        </div>
+      </div>
+    </div>
+    <div id="chips"></div>
+    <div id="hint">Search and pick two players to compare head-to-head.</div>
+
+    <div id="charts" style="display:none;">
+      <div class="grid">
+        <div class="panel">
+          <h2>1 · Probability of scoring at least X</h2>
+          <p class="explain">For any point total on the x-axis, the curve height is that
+            player's chance of hitting <b>that many points or more</b>. Higher/further-right
+            curve = better odds at that threshold. The dotted vertical line marks each
+            player's <b>median</b> (the point total they clear about half the time). Good
+            for "what's the chance they clear the ~12 I need from my flex?"</p>
+          <div id="chart-cdf-std" class="chart"></div>
+        </div>
+        <div class="panel" id="diff-panel">
+          <h2>2 · Difference (head-to-head)</h2>
+          <p class="explain">How many points the higher-projected player is ahead by at
+            each percentile; where it dips below zero, the other player actually wins
+            (e.g. a higher floor). <b>Read a percentile as an outcome rank:</b> the 10th
+            is a bad game (floor), the 50th a typical game (median), the 90th a great game
+            (ceiling). <b>Hover any point</b> to see each player's actual projected score
+            there, so you can tell whether a 2-point edge is at 8 pts or at 25.</p>
+          <div id="chart-diff" class="chart"></div>
+          <div id="diff-note"></div>
+        </div>
+        <div class="panel">
+          <h2>3 · Density (shape only)</h2>
+          <p class="explain">The shape of each player's outcome distribution: taller = more
+            likely, wider = less predictable. This illustrates the distributional
+            differences well, but is <b>less directly useful for roster decisions</b> — the
+            points where the curves cross aren't actionable. Charts 1–2 are the ones to
+            reason from.</p>
+          <div id="chart-density" class="chart"></div>
+        </div>
+      </div>
+      <div class="legend-key">
+        Each player's chip shows <b>our mean</b> (maximize expected score) and <b>our
+        median</b> (the "just hope they hit it" number), plus <b>Yahoo's projection</b>
+        for reference, their <b>position</b>, and NFL team.
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    Built from one static JSON (no server, no simulation at request time). Projections come
+    from a single sportsbook's de-vigged player props, scored 0.5-PPR, correlated
+    Monte-Carlo. Positions and Yahoo's point projection are joined from a public Yahoo
+    players directory. Kickers and defenses are not modeled.
+    See <a href="https://github.com/dkori/odds-derived-ff-projections-engine">the project on GitHub</a>
+    for the methodology.
+  </footer>
+
+  <script src="charts.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

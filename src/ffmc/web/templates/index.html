@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ffmc — projections playground</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+  <style>
+    :root { --fg:#1a1a2e; --muted:#6b7280; --line:#e5e7eb; --accent:#1f77b4; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+           margin: 0; color: var(--fg); background: #fafafa; }
+    header { padding: 16px 24px; border-bottom: 1px solid var(--line); background:#fff; }
+    header h1 { margin: 0; font-size: 18px; }
+    header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+    main { max-width: 1000px; margin: 0 auto; padding: 24px; }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; }
+    label { display:block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    select, input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+                    font-size: 14px; background:#fff; }
+    .search-wrap { position: relative; flex: 1; min-width: 240px; }
+    .search-wrap input { width: 100%; }
+    .chips { margin: 16px 0; display: flex; gap: 8px; flex-wrap: wrap; min-height: 34px; }
+    .chip { background: #eef4fb; border: 1px solid #cfe0f3; color: var(--accent);
+            border-radius: 999px; padding: 5px 10px 5px 12px; font-size: 13px;
+            display: inline-flex; align-items: center; gap: 8px; }
+    .chip button { border:none; background:none; color: var(--accent); cursor:pointer;
+                   font-size: 15px; line-height: 1; padding: 0; }
+    #plot { margin-top: 8px; min-height: 480px; border: 1px solid var(--line);
+            border-radius: 12px; background:#fff; }
+    .hint { color: var(--muted); font-size: 13px; }
+    .empty { padding: 60px 20px; text-align:center; color: var(--muted); }
+    /* Data-provenance notes for the selected players. */
+    #notes { margin-top: 16px; display: grid; gap: 8px; }
+    #notes h2 { font-size: 13px; color: var(--muted); font-weight: 600;
+                margin: 0 0 2px; text-transform: uppercase; letter-spacing: .04em; }
+    .note { border: 1px solid var(--line); border-radius: 10px; background:#fff;
+            padding: 10px 12px; font-size: 13px; }
+    .note .name { font-weight: 600; margin-right: 8px; }
+    .tag { display:inline-block; border-radius: 999px; padding: 2px 8px; font-size: 11px;
+           margin: 2px 4px 2px 0; border: 1px solid transparent; }
+    .tag.has { background:#eaf7ee; color:#1f7a3d; border-color:#c7ebd2; }
+    .tag.no  { background:#fdeeee; color:#b43b3b; border-color:#f3cccc; }
+    .tag.ladder { background:#eef4fb; color:#1f77b4; border-color:#cfe0f3; }
+    .tag.anytime { background:#fff6e6; color:#a4670c; border-color:#f3e0bd; }
+    .tag.unknown { background:#f0f0f0; color:#6b7280; border-color:#e0e0e0; }
+    .tag.lowconf { background:#fef2e2; color:#b45309; border-color:#f5d7a8; font-weight:600; }
+    .note.lowconf-note { border-color:#f5d7a8; background:#fffdf8; }
+    .note .summary { color: var(--muted); margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>fantasy-montecarlo — projections playground</h1>
+    <p>Densities rendered from the stored histogram (no re-simulation). ≤3 players overlay; 4+ small multiples. Use <em>Compare</em> to switch QBs vs WR/RB/TE, and <em>View</em> to switch Density ↔ points-by-percentile (best for comparing floors/ceilings: the vertical gap at any percentile is the points difference).</p>
+  </header>
+  <main>
+    <div class="row">
+      <div>
+        <label for="week">Week</label>
+        <select id="week">
+          {% for w in weeks %}<option value="{{ w }}">{{ w }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="snapshot">Snapshot</label>
+        <select id="snapshot"></select>
+      </div>
+      <div>
+        <label for="group">Compare</label>
+        <select id="group">
+          <option value="skill" selected>WR / RB / TE</option>
+          <option value="qb">Quarterbacks</option>
+        </select>
+      </div>
+      <div>
+        <label for="mode">View</label>
+        <select id="mode">
+          <option value="density" selected>Density</option>
+          <option value="cdf">Points by percentile</option>
+        </select>
+      </div>
+      <div class="search-wrap">
+        <label for="search">Add player (type or pick)</label>
+        <input id="search" list="playerlist" type="text"
+               placeholder="Select or type a name…" autocomplete="off" />
+        <datalist id="playerlist"></datalist>
+      </div>
+    </div>
+
+    <div id="chips" class="chips"></div>
+    <div id="plot"><div class="empty">Pick a week and add players to see their projected-points distributions.</div></div>
+    <div id="notes"></div>
+    <p class="hint" id="status"></p>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const state = { week: null, snapshot: null, group: "skill", mode: "density", players: [], allPlayers: [] };
+
+    async function j(url) { const r = await fetch(url); return r.json(); }
+
+    async function loadSnapshots() {
+      state.week = $("week").value;
+      const snaps = await j(`/api/snapshots/${encodeURIComponent(state.week)}`);
+      const sel = $("snapshot");
+      sel.innerHTML = "";
+      // Newest last from the API; show newest first, default to latest.
+      snaps.slice().reverse().forEach((s, i) => {
+        const o = document.createElement("option");
+        o.value = s.snapshot_id;
+        o.textContent = `${s.snapshot_id}  (${s.n_players} players)` + (i === 0 ? "  — latest" : "");
+        sel.appendChild(o);
+      });
+      state.snapshot = sel.value || null;
+      state.players = [];
+      await loadPlayerList();
+      renderChips();
+      renderPlot();
+    }
+
+    async function loadPlayerList() {
+      // Populate the combobox datalist with every available player name.
+      if (!state.week) return;
+      const params = new URLSearchParams({ week: state.week, snapshot: state.snapshot || "", group: state.group });
+      const names = await j(`/api/players?${params}`);
+      state.allPlayers = names;
+      const dl = $("playerlist");
+      dl.innerHTML = "";
+      names.forEach((n) => {
+        const o = document.createElement("option");
+        o.value = n;
+        dl.appendChild(o);
+      });
+    }
+
+    function renderChips() {
+      const box = $("chips");
+      box.innerHTML = "";
+      state.players.forEach((name) => {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.innerHTML = `<span>${name}</span>`;
+        const b = document.createElement("button");
+        b.textContent = "×";
+        b.onclick = () => { state.players = state.players.filter(p => p !== name); renderChips(); renderPlot(); };
+        chip.appendChild(b);
+        box.appendChild(chip);
+      });
+    }
+
+    function addPlayer(name) {
+      // Accept exact matches (case-insensitive) against the available list.
+      const match = (state.allPlayers || []).find(p => p.toLowerCase() === name.trim().toLowerCase());
+      if (!match) { $("status").textContent = `"${name}" is not in this snapshot.`; return; }
+      if (!state.players.includes(match)) state.players.push(match);
+      $("search").value = "";
+      renderChips();
+      renderPlot();
+    }
+
+    async function renderPlot() {
+      const status = $("status");
+      if (!state.players.length) {
+        $("plot").innerHTML = '<div class="empty">Add players to see their projected-points distributions.</div>';
+        $("notes").innerHTML = "";
+        status.textContent = "";
+        return;
+      }
+      const params = new URLSearchParams({
+        week: state.week, snapshot: state.snapshot || "",
+        players: state.players.join(","), mode: state.mode,
+      });
+      const res = await j(`/api/figure?${params}`);
+      if (res.error) { status.textContent = `error: ${res.error}`; return; }
+      // Full redraw (newPlot), not react(): react() diffs traces positionally
+      // and can keep a stale trace when the player set changes but the trace
+      // count stays the same (e.g. remove one, add another) -- the newly added
+      // player's curve then fails to appear. newPlot always rebuilds cleanly.
+      Plotly.newPlot("plot", res.figure.data, res.figure.layout, { responsive: true });
+      renderNotes(res.notes || {});
+      status.textContent = res.missing && res.missing.length
+        ? `Not in this snapshot: ${res.missing.join(", ")}` : "";
+    }
+
+    function tdTag(td) {
+      // Returns [className, label] for the TD-data badge.
+      if (!td || !td.available) return ["no", "no TD line"];
+      if (td.ladder === true) {
+        const n = td.n_anchors ? ` (${td.n_anchors} anchors)` : "";
+        return ["ladder", `full TD ladder${n}`];
+      }
+      if (td.ladder === false) return ["anytime", "anytime-TD only"];
+      return ["unknown", "TD line (ladder unknown)"];
+    }
+
+    function passTdTag(ptd) {
+      // Returns [className, label] for the QB passing-TD badge.
+      if (!ptd || !ptd.available) return ["no", "no passing-TD line"];
+      if (ptd.ladder === true) {
+        const n = ptd.n_anchors ? ` (${ptd.n_anchors} anchors)` : "";
+        return ["ladder", `passing-TD ladder${n}`];
+      }
+      return ["anytime", "passing-TD anchor only"];
+    }
+
+    function renderNotes(notes) {
+      const box = $("notes");
+      const names = state.players.filter((n) => notes[n]);
+      if (!names.length) { box.innerHTML = ""; return; }
+      let html = "<h2>Data available per player</h2>";
+      names.forEach((name) => {
+        const nd = notes[name];
+        const has = (nd.present || []).map((s) => `<span class="tag has">${s}</span>`).join("");
+        const no = (nd.missing || []).map((s) => `<span class="tag no">no ${s}</span>`).join("");
+        const [cls, label] = tdTag(nd.td);
+        const td = `<span class="tag ${cls}">${label}</span>`;
+        let passTd = "";
+        if (nd.pass_td) {
+          const [pcls, plabel] = passTdTag(nd.pass_td);
+          passTd = `<span class="tag ${pcls}">${plabel}</span>`;
+        }
+        const low = nd.low_confidence
+          ? `<span class="tag lowconf" title="A continuous stat has only its main line (no alternates), so its shape/tail is assumed, not measured. Treat this projection as low confidence.">⚠ low confidence</span>`
+          : "";
+        const noteCls = nd.low_confidence ? "note lowconf-note" : "note";
+        html += `<div class="${noteCls}"><span class="name">${name}</span>${has}${no}${td}${passTd}${low}` +
+                `<div class="summary">${nd.summary || ""}</div></div>`;
+      });
+      box.innerHTML = html;
+    }
+
+    // Wiring
+    $("week").addEventListener("change", loadSnapshots);
+    $("snapshot").addEventListener("change", async () => {
+      state.snapshot = $("snapshot").value;
+      await loadPlayerList();
+      renderPlot();
+    });
+    $("group").addEventListener("change", async () => {
+      // Switching groups scopes the player universe; clear the current
+      // selection so QBs and skill players are never mixed in one figure.
+      state.group = $("group").value;
+      state.players = [];
+      $("search").value = "";
+      $("status").textContent = "";
+      await loadPlayerList();
+      renderChips();
+      renderPlot();
+    });
+    $("mode").addEventListener("change", () => {
+      // View toggle (density <-> CDF): same players, just redraw.
+      state.mode = $("mode").value;
+      renderPlot();
+    });
+    // Picking a datalist option fires 'change'; typing + Enter fires keydown.
+    $("search").addEventListener("change", (e) => { if (e.target.value) addPlayer(e.target.value); });
+    $("search").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && e.target.value) { e.preventDefault(); addPlayer(e.target.value); }
+    });
+
+    // Init
+    state.group = $("group").value || "skill";
+    state.mode = $("mode").value || "density";
+    if ($("week").value) loadSnapshots();
+  </script>
+</body>
+</html>

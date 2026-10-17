@@ -1,0 +1,46 @@
+{
+  "id": "sample_event_0001",
+  "sport_key": "americanfootball_nfl",
+  "commence_time": "2026-10-05T17:00:00Z",
+  "home_team": "Example Home",
+  "away_team": "Example Away",
+  "bookmakers": [
+    {
+      "key": "draftkings",
+      "title": "DraftKings",
+      "markets": [
+        {
+          "key": "player_reception_yds_alternate",
+          "outcomes": [
+            {"name": "Over", "description": "Sample WR", "point": 39.5, "price": -260},
+            {"name": "Under", "description": "Sample WR", "point": 39.5, "price": 200},
+            {"name": "Over", "description": "Sample WR", "point": 59.5, "price": -140},
+            {"name": "Under", "description": "Sample WR", "point": 59.5, "price": 110},
+            {"name": "Over", "description": "Sample WR", "point": 79.5, "price": 120},
+            {"name": "Under", "description": "Sample WR", "point": 79.5, "price": -150},
+            {"name": "Over", "description": "Sample WR", "point": 99.5, "price": 260},
+            {"name": "Under", "description": "Sample WR", "point": 99.5, "price": -340}
+          ]
+        },
+        {
+          "key": "player_receptions_alternate",
+          "outcomes": [
+            {"name": "Over", "description": "Sample WR", "point": 2.5, "price": -240},
+            {"name": "Under", "description": "Sample WR", "point": 2.5, "price": 185},
+            {"name": "Over", "description": "Sample WR", "point": 4.5, "price": -120},
+            {"name": "Under", "description": "Sample WR", "point": 4.5, "price": -105},
+            {"name": "Over", "description": "Sample WR", "point": 6.5, "price": 165},
+            {"name": "Under", "description": "Sample WR", "point": 6.5, "price": -205}
+          ]
+        },
+        {
+          "key": "player_anytime_td",
+          "outcomes": [
+            {"name": "Yes", "description": "Sample WR", "price": 150},
+            {"name": "No", "description": "Sample WR", "price": -190}
+          ]
+        }
+      ]
+    }
+  ]
+}

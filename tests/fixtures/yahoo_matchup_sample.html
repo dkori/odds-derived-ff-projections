@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<!--
+  Synthetic Yahoo Fantasy matchup fixture for parser tests.
+
+  Hand-built to mirror the structure of a real matchup page (which is private,
+  ~1 MB, and gitignored) without reproducing any copyrighted page content. The
+  column layout matches what the real page emits:
+
+    statTableN / thead titles: Projected Points + Fantasy Points (mirrored)
+    each <tr>: 11 <td> cols — [1] left player, [2] left PROJ (F-shade),
+    [3] left ACTUAL (Fw-b), [5] center slot label, [7] right ACTUAL,
+    [8] right PROJ, [9] right player — with a trailing TOTAL row.
+
+  It deliberately exercises the edge cases the parser must handle:
+    - title-case team abbrev on the left ("Dal") vs upper-case on right ("GB")
+    - a composite slot label ("W/R/T")
+    - a bench ("BN") row
+    - a not-yet-played actual rendered as "-" (parses to None)
+    - the TOTAL footer row (must be skipped)
+-->
+<html>
+<head><title>Fantasy Football | Test Fixture</title></head>
+<body>
+<table id="statTable1">
+  <thead>
+    <tr class="First Last">
+      <th class="Alt"><div>Stats</div></th>
+      <th><div>Player</div></th>
+      <th title="Projected Points" class="Alt Ta-end F-shade"><div>Proj</div></th>
+      <th title="Fantasy Points" class="Pend-lg Ta-end Fw-b"><div>Fan Pts</div></th>
+      <th class="Alt Hidden"><div>Position</div></th>
+      <th class="Bg-shade"><div>Pos</div></th>
+      <th class="Alt Hidden"><div>Position</div></th>
+      <th title="Fantasy Points" class="Ta-end Fw-b"><div>Fan Pts</div></th>
+      <th title="Projected Points" class="Alt Ta-end F-shade"><div>Proj</div></th>
+      <th><div>Player</div></th>
+      <th class="Alt"><div>Stats</div></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr class="First">
+      <td class="Alt Ta-start"><div>1 Pass TD, 250 Pass Yds</div></td>
+      <td class="Ta-start"><div><div class="ysf-player-name">
+        <a class="Nowrap name F-link" href="https://sports.yahoo.com/nfl/players/1001"
+           data-ys-playerid="1001" title="Alice Arm">Alice Arm</a>
+        <span class="D-b"><span class="Fz-xxs">Dal - QB</span></span>
+      </div></div></td>
+      <td class="Alt Ta-end F-shade Va-top"><div>20.20</div></td>
+      <td class="Pend-lg Ta-end Fw-b Va-top"><div>29.76</div></td>
+      <td class="Alt Hidden">QB</td>
+      <td class="Bg-shade F-shade">QB</td>
+      <td class="Alt Hidden">QB</td>
+      <td class="Ta-end Fw-b Va-top"><div>15.80</div></td>
+      <td class="Alt Ta-end F-shade Va-top"><div>19.27</div></td>
+      <td class="Last Ta-start"><div><div class="ysf-player-name">
+        <a class="Nowrap name F-link" href="https://sports.yahoo.com/nfl/players/2001"
+           data-ys-playerid="2001" title="Bob Back">Bob Back</a>
+        <span class="D-b"><span class="Fz-xxs">GB - QB</span></span>
+      </div></div></td>
+      <td class="Alt Ta-start"><div>2 Pass TD</div></td>
+    </tr>
+    <tr>
+      <td class="Alt Ta-start"><div>5 Rec, 60 Yds</div></td>
+      <td class="Ta-start"><div><div class="ysf-player-name">
+        <a class="Nowrap name F-link" href="https://sports.yahoo.com/nfl/players/1002"
+           data-ys-playerid="1002" title="Carol Catch">Carol Catch</a>
+        <span class="D-b"><span class="Fz-xxs">Min - WR</span></span>
+      </div></div></td>
+      <td class="Alt Ta-end F-shade Va-top"><div>13.79</div></td>
+      <td class="Pend-lg Ta-end Fw-b Va-top"><div>7.00</div></td>
+      <td class="Alt Hidden">WR</td>
+      <td class="Bg-shade F-shade">W/R/T</td>
+      <td class="Alt Hidden">WR</td>
+      <td class="Ta-end Fw-b Va-top"><div>-</div></td>
+      <td class="Alt Ta-end F-shade Va-top"><div>11.90</div></td>
+      <td class="Last Ta-start"><div><div class="ysf-player-name">
+        <a class="Nowrap name F-link" href="https://sports.yahoo.com/nfl/players/2002"
+           data-ys-playerid="2002" title="Dave Deep">Dave Deep</a>
+        <span class="D-b"><span class="Fz-xxs">Atl - WR</span></span>
+      </div></div></td>
+      <td class="Alt Ta-start"><div>3 Rec</div></td>
+    </tr>
+    <tr>
+      <td class="Alt Ta-start"><div>bench</div></td>
+      <td class="Ta-start"><div><div class="ysf-player-name">
+        <a class="Nowrap name F-link" href="https://sports.yahoo.com/nfl/players/1003"
+           data-ys-playerid="1003" title="Erin End">Erin End</a>
+        <span class="D-b"><span class="Fz-xxs">KC - TE</span></span>
+      </div></div></td>
+      <td class="Alt Ta-end F-shade Va-top"><div>8.41</div></td>
+      <td class="Pend-lg Ta-end Fw-b Va-top"><div>7.00</div></td>
+      <td class="Alt Hidden">TE</td>
+      <td class="Bg-shade F-shade">BN</td>
+      <td class="Alt Hidden">TE</td>
+      <td class="Ta-end Fw-b Va-top"><div>5.80</div></td>
+      <td class="Alt Ta-end F-shade Va-top"><div>8.44</div></td>
+      <td class="Last Ta-start"><div><div class="ysf-player-name">
+        <a class="Nowrap name F-link" href="https://sports.yahoo.com/nfl/players/2003"
+           data-ys-playerid="2003" title="Frank Flat">Frank Flat</a>
+        <span class="D-b"><span class="Fz-xxs">NYG - TE</span></span>
+      </div></div></td>
+      <td class="Alt Ta-start"><div>bench</div></td>
+    </tr>
+    <tr class="Last">
+      <td class="Alt Ta-start"><div></div></td>
+      <td class="Ta-start"><div>Total</div></td>
+      <td class="Alt Ta-end F-shade Va-top"><div>42.40</div></td>
+      <td class="Pend-lg Ta-end Fw-b Va-top"><div>43.76</div></td>
+      <td class="Alt Hidden"></td>
+      <td class="Bg-shade F-shade">TOTAL</td>
+      <td class="Alt Hidden"></td>
+      <td class="Ta-end Fw-b Va-top"><div>21.60</div></td>
+      <td class="Alt Ta-end F-shade Va-top"><div>39.61</div></td>
+      <td class="Last Ta-start"><div>Total</div></td>
+      <td class="Alt Ta-start"><div></div></td>
+    </tr>
+  </tbody>
+</table>
+</body>
+</html>
