@@ -1,4 +1,4 @@
-# odds-derived-ff-projections-engine
+# odds-derived-ff-projections
 
 The goal of this project was to improve on single-value point estimates that sites like yahoo provide to see if we can instead estimate a probability distribution of likely fantasy scores. A probability distribution gives us more information about player floors/ceilings and upsides. To keep the methodology simple, we derive these score probability distributions as **purely as possible from sportsbook
 player-prop odds** and only added a few assumptions on top of those odds where necessary. 
