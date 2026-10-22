@@ -4,10 +4,12 @@
  * labels. The only facet is POSITION (QB/RB/WR/TE) — no league/owner data.
  */
 
-let DATA = null;        // the loaded payload
+let DATA = null;        // the loaded payload (current week)
 let NAMES = [];         // sorted selectable player names
 let selected = [];      // up to 2 names
 let colorOf = {};       // name -> stable palette slot (0/1) while selected
+let activeScoring = 'half_ppr';  // scoring toggle; default 0.5 PPR (this league)
+let WEEKS = [];         // weeks manifest entries [{week, file}], if present
 
 // Hover stays on (the unified spike line + value tooltip come from the per-chart
 // hovermode:'x unified'); zoom/pan is disabled so a stray drag or scroll on
@@ -20,25 +22,126 @@ const PLOTLY_CONFIG = {
 };
 
 async function boot() {
-  // Which week to show is NOT hardcoded: a tiny stable pointer file names the
-  // current week's asset, so a weekly refresh only writes data + updates the
-  // pointer (no code edit). Falls back gracefully if the pointer is missing.
-  let dataFile = 'data/projections_week6.json';
+  // Prior-week serving: a weeks manifest (weeks.json) lists every shipped week's
+  // asset and which is latest. Each week is its own file loaded on demand, so
+  // offering prior weeks costs nothing to the default page load. Falls back to
+  // the single latest.json pointer, then to a hardcoded file, if the manifest
+  // is missing (older deploys).
+  let latestFile = 'data/projections_week6.json';
   try {
-    const ptr = await (await fetch('data/latest.json')).json();
-    if (ptr && ptr.file) dataFile = 'data/' + ptr.file;
+    const man = await (await fetch('data/weeks.json')).json();
+    if (man && Array.isArray(man.weeks) && man.weeks.length) {
+      WEEKS = man.weeks.slice().sort((a, b) => b.week - a.week); // newest first
+      latestFile = 'data/' + (man.latest || WEEKS[0].file);
+    }
   } catch (e) {
-    console.warn('no data/latest.json pointer; using fallback', dataFile);
+    try {
+      const ptr = await (await fetch('data/latest.json')).json();
+      if (ptr && ptr.file) latestFile = 'data/' + ptr.file;
+    } catch (e2) {
+      console.warn('no weeks.json/latest.json; using fallback', latestFile);
+    }
   }
+  populateWeekPicker(latestFile);
+  await loadWeek(latestFile);
+  wireControls();
+  wireViewControls();
+  render();
+}
+
+// Populate the week dropdown from the manifest (newest first). If there's no
+// manifest (one-week deploy) the picker is hidden.
+function populateWeekPicker(latestFile) {
+  const sel = document.getElementById('week-picker');
+  if (!sel) return;
+  if (!WEEKS.length) { sel.style.display = 'none'; return; }
+  const latestName = latestFile.replace(/^data\//, '');
+  sel.innerHTML = WEEKS.map((w, i) => {
+    const sl = ('data/' + w.file === latestFile) || (i === 0 && !latestName);
+    return `<option value="data/${escapeHtml(w.file)}"${sl ? ' selected' : ''}>` +
+      `Week ${w.week}${i === 0 ? ' (latest)' : ''}</option>`;
+  }).join('');
+}
+
+// Load one week's asset and refresh the selectable-name list. Selections are
+// kept across a week change; a player absent from the new week is dropped.
+async function loadWeek(dataFile) {
   const res = await fetch(dataFile);
   DATA = await res.json();
-  // Only players we can actually chart (have a quantile grid).
+  // Default the scoring toggle to the store's declared default when present.
+  // (Only on first load — respect a user's explicit choice afterward via the
+  // select's own value in wireViewControls.)
   NAMES = Object.keys(DATA.players)
-    .filter((n) => DATA.players[n].quantiles && DATA.players[n].quantiles.levels.length > 1)
+    .filter((n) => playerHasCurve(DATA.players[n]))
     .sort();
+  // Drop any selected players not present in the newly loaded week.
+  selected = selected.filter((n) => DATA.players[n]);
+  Object.keys(colorOf).forEach((n) => { if (!DATA.players[n]) delete colorOf[n]; });
   renderMeta();
-  wireControls();
-  render();
+}
+
+// A player is chartable under the ACTIVE scoring if that scoring's quantile grid
+// (or the flat grid, for pre-multi-scoring weeks) has more than one level.
+function playerHasCurve(rec) {
+  const q = scoringField(rec, 'quantiles');
+  return q && q.levels && q.levels.length > 1;
+}
+
+// Return a distribution field (mean/median/std/quantiles/histogram/…) for the
+// ACTIVE scoring. New weeks carry a `scorings` block keyed standard/half_ppr/ppr;
+// older weeks only have the flat 0.5-PPR fields, so we fall back to those. This
+// is what makes the toggle degrade gracefully on prior weeks.
+function scoringField(rec, key) {
+  if (rec && rec.scorings && rec.scorings[activeScoring]
+      && rec.scorings[activeScoring][key] != null) {
+    return rec.scorings[activeScoring][key];
+  }
+  return rec ? rec[key] : undefined;  // flat fallback (store's declared scoring)
+}
+
+// A record "view" for charting under the active scoring: the scoring-specific
+// distribution fields spread over the static per-player fields (positions,
+// yahoo_proj, nfl_team, name). Charts read this instead of the raw record.
+function recView(name) {
+  const r = DATA.players[name];
+  if (!r) return null;
+  return {
+    name,
+    positions: r.positions,
+    yahoo_proj: r.yahoo_proj,
+    nfl_team: r.nfl_team,
+    mean: scoringField(r, 'mean'),
+    median: scoringField(r, 'median'),
+    std: scoringField(r, 'std'),
+    floor_p10: scoringField(r, 'floor_p10'),
+    ceiling_p90: scoringField(r, 'ceiling_p90'),
+    quantiles: scoringField(r, 'quantiles'),
+    histogram: scoringField(r, 'histogram'),
+  };
+}
+
+// Wire the week picker + scoring toggle (the "view" controls, distinct from the
+// player-picker controls in wireControls).
+function wireViewControls() {
+  const weekSel = document.getElementById('week-picker');
+  const scoreSel = document.getElementById('scoring-mode');
+  if (scoreSel) {
+    scoreSel.value = activeScoring;
+    scoreSel.addEventListener('change', () => {
+      activeScoring = scoreSel.value;
+      // Re-filter chartable names (a player could lack a curve under a scoring,
+      // though in practice all three are present together) and re-render.
+      NAMES = Object.keys(DATA.players).filter((n) => playerHasCurve(DATA.players[n])).sort();
+      render();
+    });
+  }
+  if (weekSel) {
+    weekSel.addEventListener('change', async () => {
+      await loadWeek(weekSel.value);
+      // Rebuild the position filter counts etc. for the new week, then render.
+      render();
+    });
+  }
 }
 
 function renderMeta() {
@@ -47,9 +150,11 @@ function renderMeta() {
   const posSummary = (DATA.positions || [])
     .map((p) => `${p} ${pc[p] != null ? pc[p] : 0}`)
     .join(' · ');
+  const scoreLabel = { standard: 'Standard', half_ppr: '0.5 PPR', ppr: 'Full PPR' }[activeScoring]
+    || DATA.scoring;
   document.getElementById('meta').textContent =
     `${DATA.week_label} · ${DATA.season} week ${DATA.week} · book ${DATA.book} · ` +
-    `${DATA.scoring} · ${total} priced players (${posSummary})`;
+    `${scoreLabel} · ${total} priced players (${posSummary})`;
 }
 
 function wireControls() {
@@ -73,7 +178,8 @@ function wireControls() {
   function applySort(names) {
     if (sortSel && sortSel.value === 'mean') {
       return names.slice().sort((a, b) => {
-        const ma = DATA.players[a].mean, mb = DATA.players[b].mean;
+        const ma = scoringField(DATA.players[a], 'mean');
+        const mb = scoringField(DATA.players[b], 'mean');
         if (mb !== ma) return mb - ma;
         return a.localeCompare(b);
       });
@@ -159,8 +265,9 @@ function badge(name) {
   // When sorting by our mean, surface the mean inline so the descending order
   // is readable at a glance (e.g. scanning for the best RB).
   const sortSel = document.getElementById('sort-mode');
-  if (sortSel && sortSel.value === 'mean' && r && typeof r.mean === 'number') {
-    parts.push(`<span class="mini-mean">${r.mean.toFixed(1)}</span>`);
+  const meanV = scoringField(r, 'mean');
+  if (sortSel && sortSel.value === 'mean' && r && typeof meanV === 'number') {
+    parts.push(`<span class="mini-mean">${meanV.toFixed(1)}</span>`);
   }
   if (label) parts.push(`<span class="mini-pos">${escapeHtml(label)}</span>`);
   return parts.length ? ' ' + parts.join(' ') : '';
@@ -209,7 +316,7 @@ function render() {
   if (selected.length === 1) hint.textContent = 'Pick a second player to unlock the difference chart.';
   charts.style.display = 'block';
 
-  const series = selected.map((n) => ({ name: n, rec: DATA.players[n], i: colorOf[n] }));
+  const series = selected.map((n) => ({ name: n, rec: recView(n), i: colorOf[n] }));
   renderCdfStd(series);
   renderDiff(series);
   renderDensity(series);
@@ -219,7 +326,7 @@ function renderChips() {
   const box = document.getElementById('chips');
   box.innerHTML = selected
     .map((n) => {
-      const r = DATA.players[n];
+      const r = recView(n);
       const label = posLabel(n);
       const posChip = label ? `<span class="chip-pos">${escapeHtml(label)}</span>` : '';
       const yp = r.yahoo_proj != null ? `Yahoo ${r.yahoo_proj.toFixed(1)}` : 'no Yahoo proj';

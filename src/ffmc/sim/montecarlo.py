@@ -169,15 +169,54 @@ def simulate_player(
         tails widen. Correlations are predicted per player from odds-derived
         usage (position-agnostic; see ffmc.sim.correlations).
     """
+    # Single-scoring convenience wrapper over the multi-scoring path: sample the
+    # stat lines once and score them under the one config. Using a throwaway
+    # label keeps behaviour identical to the pre-multi-scoring implementation.
+    return simulate_player_multi(
+        model, {"_": scoring}, n_sims=n_sims, seed=seed, correlated=correlated
+    )["_"]
+
+
+def simulate_player_multi(
+    model: PlayerModel,
+    scorings: dict[str, ScoringConfig],
+    n_sims: int = 50_000,
+    seed: Optional[int] = None,
+    correlated: bool = False,
+) -> dict[str, ScoreDistribution]:
+    """Simulate one player ONCE and score the same draws under several configs.
+
+    ``scorings`` maps a label (e.g. ``"standard"`` / ``"half_ppr"`` / ``"ppr"``)
+    to a ScoringConfig; the return maps the same labels to ScoreDistributions.
+
+    The point of this path: the per-stat sampled arrays (receptions, yards, TDs,
+    …) are drawn exactly once, then each scoring is just a different linear
+    combination of those same arrays. So the three PPR variants are mutually
+    consistent (they describe the identical simulated games, differing only in
+    how receptions are weighted) and cost one simulation, not three. This is
+    what lets the front end offer a scoring toggle without re-simulating and
+    without any extra Odds API spend.
+    """
     rng = np.random.default_rng(seed)
     if correlated:
-        return _simulate_correlated(model, scoring, n_sims, rng)
-    return _simulate_independent(model, scoring, n_sims, rng)
+        stats = _sample_correlated(model, n_sims, rng)
+    else:
+        stats = _sample_independent(model, n_sims, rng)
+    return {
+        label: ScoreDistribution(name=model.name, samples=_score(scoring, *stats))
+        for label, scoring in scorings.items()
+    }
 
 
-def _simulate_independent(
-    model: PlayerModel, scoring: ScoringConfig, n_sims: int, rng: np.random.Generator
-) -> ScoreDistribution:
+def _sample_independent(
+    model: PlayerModel, n_sims: int, rng: np.random.Generator
+) -> tuple[np.ndarray, ...]:
+    """Draw each stat independently; return the per-stat sample arrays (unscored).
+
+    Order matches ``_score``'s signature:
+    (receptions, receiving_yards, rushing_yards, touchdowns, passing_yards,
+    passing_tds).
+    """
     zeros = np.zeros(n_sims)
     rec = model.receptions.sample(n_sims, rng) if model.receptions else zeros
     rec_yds = (
@@ -191,15 +230,18 @@ def _simulate_independent(
         model.passing_yards.sample(n_sims, rng) if model.passing_yards else zeros
     )
     pass_tds = model.passing_tds.sample(n_sims, rng) if model.passing_tds else zeros
-    return ScoreDistribution(
-        name=model.name,
-        samples=_score(scoring, rec, rec_yds, rush_yds, tds, pass_yds, pass_tds),
-    )
+    return (rec, rec_yds, rush_yds, tds, pass_yds, pass_tds)
 
 
-def _simulate_correlated(
-    model: PlayerModel, scoring: ScoringConfig, n_sims: int, rng: np.random.Generator
-) -> ScoreDistribution:
+def _sample_correlated(
+    model: PlayerModel, n_sims: int, rng: np.random.Generator
+) -> tuple[np.ndarray, ...]:
+    """Draw the skill stats via the Gaussian copula (passing sampled independently).
+
+    Returns the per-stat sample arrays in ``_score`` order. The marginals are
+    unchanged by the copula; only co-movement differs (see the module docstring
+    and ffmc.sim.correlations).
+    """
     # Imported here to keep the independent path dependency-free.
     from scipy.stats import norm
 
@@ -237,17 +279,13 @@ def _simulate_correlated(
     )
     pass_tds = model.passing_tds.sample(n_sims, rng) if model.passing_tds else zeros
 
-    return ScoreDistribution(
-        name=model.name,
-        samples=_score(
-            scoring,
-            values["receptions"],
-            values["receiving_yards"],
-            values["rushing_yards"],
-            values["touchdowns"],
-            pass_yds,
-            pass_tds,
-        ),
+    return (
+        values["receptions"],
+        values["receiving_yards"],
+        values["rushing_yards"],
+        values["touchdowns"],
+        pass_yds,
+        pass_tds,
     )
 
 

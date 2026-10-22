@@ -65,6 +65,23 @@ def standard() -> ScoringConfig:
 PRESETS = {"ppr": ppr, "half_ppr": half_ppr, "standard": standard}
 
 
+# The canonical trio the front end offers as a scoring toggle. The three differ
+# ONLY in points-per-reception (0 / 0.5 / 1.0), so they can be scored from a
+# single set of sampled stat lines (see ffmc.sim.montecarlo.simulate_player_multi)
+# with no extra sampling and no extra Odds API cost. Order is standard -> half ->
+# full so a receiver's distribution shifts monotonically rightward across them.
+# The label keys match PRESETS so stores/manifests stay self-describing.
+SCORING_TRIO: tuple[str, ...] = ("standard", "half_ppr", "ppr")
+
+# The toggle's default selection (0.5 PPR, this league's scoring).
+DEFAULT_TRIO_SCORING = "half_ppr"
+
+
+def scoring_trio() -> dict[str, "ScoringConfig"]:
+    """The canonical standard / 0.5-PPR / full-PPR configs, keyed by label."""
+    return {name: from_preset(name) for name in SCORING_TRIO}
+
+
 def from_preset(name: str) -> ScoringConfig:
     key = name.lower().replace("-", "_")
     if key not in PRESETS:

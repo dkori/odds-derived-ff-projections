@@ -21,6 +21,8 @@
       border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); }
     #sort-mode { width: 100%; padding: 10px 12px; font-size: 14px;
       border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); }
+    #week-picker, #scoring-mode { width: 100%; padding: 10px 12px; font-size: 14px;
+      border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); }
     .player-select { position: relative; }
     #player-trigger { width: 100%; text-align: left; padding: 10px 12px; font-size: 15px;
       border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--muted);
@@ -80,6 +82,13 @@
 
   <main>
     <div class="picker">
+      <select id="week-picker" title="Which NFL week to show">
+      </select>
+      <select id="scoring-mode" title="League scoring format">
+        <option value="standard">Scoring: Standard (non-PPR)</option>
+        <option value="half_ppr" selected>Scoring: 0.5 PPR</option>
+        <option value="ppr">Scoring: Full PPR</option>
+      </select>
       <select id="pos-filter" title="Filter the player list by position">
         <option value="__all__">All positions</option>
       </select>
@@ -143,8 +152,9 @@
 
   <footer>
     Built from one static JSON (no server, no simulation at request time). Projections come
-    from a single sportsbook's de-vigged player props, scored 0.5-PPR, correlated
-    Monte-Carlo. Positions and Yahoo's point projection are joined from a public Yahoo
+    from a single sportsbook's de-vigged player props, scored under the selected format
+    (Standard / 0.5 PPR / Full PPR), correlated Monte-Carlo. Positions and Yahoo's point
+    projection are joined from a public Yahoo
     players directory. Kickers and defenses are not modeled.
     See <a href="https://github.com/dkori/odds-derived-ff-projections">the project on GitHub</a>
     for the methodology.

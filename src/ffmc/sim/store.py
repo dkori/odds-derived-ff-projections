@@ -28,6 +28,42 @@ from typing import Optional
 DEFAULT_STORE_DIR = Path("data/projections")
 
 
+import re
+
+_WEEK_FILE_RE = re.compile(r"_week(\d+)\.json$")
+
+
+def write_weeks_manifest(
+    data_dir: Path | str, pattern_prefix: str
+) -> dict:
+    """Write a ``weeks.json`` manifest of every shipped week asset in ``data_dir``.
+
+    The static apps serve prior weeks by lazy-loading a different week's JSON on
+    demand; this manifest is how the front end discovers which weeks exist and
+    which is latest, without hardcoding filenames. Each week is its own file (one
+    loads at a time), so listing prior weeks here adds nothing to the default
+    page load.
+
+    ``pattern_prefix`` is the asset basename stem, e.g. ``"projections"`` (public:
+    ``projections_week7.json``) or ``"demo"`` (league: ``demo_week7.json``). Files
+    are matched as ``<prefix>_week<N>.json``; ``N`` orders them and the highest is
+    marked ``latest``. Returns the manifest dict (also written to
+    ``<data_dir>/weeks.json``).
+    """
+    data_dir = Path(data_dir)
+    weeks = []
+    for f in sorted(data_dir.glob(f"{pattern_prefix}_week*.json")):
+        m = _WEEK_FILE_RE.search(f.name)
+        if not m:
+            continue
+        weeks.append({"week": int(m.group(1)), "file": f.name})
+    weeks.sort(key=lambda w: w["week"])
+    latest = weeks[-1]["file"] if weeks else None
+    manifest = {"latest": latest, "weeks": weeks}
+    (data_dir / "weeks.json").write_text(json.dumps(manifest) + "\n")
+    return manifest
+
+
 class ProjectionsStore:
     """File-backed reader over the versioned projections layout."""
 

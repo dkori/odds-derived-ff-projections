@@ -32,8 +32,8 @@ from typing import Optional
 
 from ffmc.odds.client import OddsClient
 from ffmc.odds.markets import ALL_MARKETS, build_player_models
-from ffmc.scoring.config import ScoringConfig
-from ffmc.sim.montecarlo import PlayerModel, simulate_player
+from ffmc.scoring.config import ScoringConfig, scoring_trio
+from ffmc.sim.montecarlo import PlayerModel, ScoreDistribution, simulate_player_multi
 
 DEFAULT_STORE_DIR = Path("data/projections")
 DEFAULT_QB_EXCLUSIONS = Path("config/qb_exclusions.json")
@@ -253,6 +253,25 @@ def _data_provenance(model: PlayerModel) -> dict:
     return prov
 
 
+def _dist_block(dist: ScoreDistribution) -> dict:
+    """The stored distribution block for one scoring: summary + curve + histogram.
+
+    This is the per-scoring payload the front end reads. ``summary()`` already
+    rounds the scalars; the dense quantile grid and 64-bin histogram are what the
+    app draws the survival/density curves from without re-simulating.
+    """
+    s = dist.summary()
+    return {
+        "mean": s["mean"],
+        "median": s["median"],
+        "std": s["std"],
+        "floor_p10": s["floor_p10"],
+        "ceiling_p90": s["ceiling_p90"],
+        "quantiles": dist.dense_quantiles(),
+        "histogram": dist.histogram(),
+    }
+
+
 @dataclass
 class SlateResult:
     """Outcome of a slate precompute run (for reporting)."""
@@ -348,19 +367,30 @@ def precompute_slate(
             del qualifying[n]
 
         for name, model in qualifying.items():
-            dist = simulate_player(
-                model, scoring, n_sims=n_sims, seed=seed, correlated=correlated
+            # Sample ONCE, score under the canonical trio (standard/0.5/full PPR)
+            # plus — if the store's own scoring isn't one of those three — that
+            # config too, so the flat top-level fields always reflect the store's
+            # declared scoring. Same draws across all configs (consistent).
+            configs = dict(scoring_trio())
+            configs[scoring_name] = scoring  # overwrites if already in the trio
+            dists = simulate_player_multi(
+                model, configs, n_sims=n_sims, seed=seed, correlated=correlated
             )
-            s = dist.summary()
+            # The trio block the scoring toggle reads.
+            scorings_block = {label: _dist_block(dists[label]) for label in scoring_trio()}
+            # Flat top-level fields = the store's declared scoring (back-compat:
+            # the apps/build-scripts that predate the toggle read these).
+            flat = _dist_block(dists[scoring_name])
             record = {
                 "name": name,
-                "mean": s["mean"],
-                "median": s["median"],
-                "std": s["std"],
-                "floor_p10": s["floor_p10"],
-                "ceiling_p90": s["ceiling_p90"],
-                "quantiles": dist.dense_quantiles(),
-                "histogram": dist.histogram(),
+                "mean": flat["mean"],
+                "median": flat["median"],
+                "std": flat["std"],
+                "floor_p10": flat["floor_p10"],
+                "ceiling_p90": flat["ceiling_p90"],
+                "quantiles": flat["quantiles"],
+                "histogram": flat["histogram"],
+                "scorings": scorings_block,
                 "markets_present": _stat_presence(model),
                 "position_group": classify_group(model),
                 "data_provenance": _data_provenance(model),
@@ -396,6 +426,8 @@ def precompute_slate(
         "sport": sport,
         "book": book,
         "scoring": scoring_name,
+        "scorings_available": list(scoring_trio().keys()),
+        "scoring_default": scoring_name if scoring_name in scoring_trio() else "half_ppr",
         "correlated": correlated,
         "n_sims": n_sims,
         "games": games_report,
