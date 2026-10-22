@@ -1,0 +1,46 @@
+name: Deploy web app to GitHub Pages
+
+# Publishes the static head-to-head app in web_public/ to GitHub Pages.
+# Pages cannot serve an arbitrary subdirectory directly, so this workflow
+# uploads web_public/ as the Pages artifact and deploys it at the site root.
+#
+# NOTE: this file is GENERATED into the public engine repo by
+# scripts/scaffold_public_engine.py (overlay step). Edit it here, not in the
+# engine repo.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web_public/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; don't cancel an in-progress run.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload web_public as the Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web_public
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

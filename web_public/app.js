@@ -1,5 +1,5 @@
 /* Public odds-derived projections app (vanilla JS + Plotly).
- * Loads one enriched JSON (projections_week5.json), lets a user pick EXACTLY 2
+ * Loads one enriched JSON (named by data/latest.json), lets a user pick EXACTLY 2
  * players, and renders 3 charts with explainers + our-mean / Yahoo-proj / position
  * labels. The only facet is POSITION (QB/RB/WR/TE) — no league/owner data.
  */
@@ -20,7 +20,17 @@ const PLOTLY_CONFIG = {
 };
 
 async function boot() {
-  const res = await fetch('data/projections_week6.json');
+  // Which week to show is NOT hardcoded: a tiny stable pointer file names the
+  // current week's asset, so a weekly refresh only writes data + updates the
+  // pointer (no code edit). Falls back gracefully if the pointer is missing.
+  let dataFile = 'data/projections_week6.json';
+  try {
+    const ptr = await (await fetch('data/latest.json')).json();
+    if (ptr && ptr.file) dataFile = 'data/' + ptr.file;
+  } catch (e) {
+    console.warn('no data/latest.json pointer; using fallback', dataFile);
+  }
+  const res = await fetch(dataFile);
   DATA = await res.json();
   // Only players we can actually chart (have a quantile grid).
   NAMES = Object.keys(DATA.players)
