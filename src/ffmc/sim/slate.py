@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from ffmc.odds.client import OddsClient
+from ffmc.odds.client import OddsClient, OddsAPIError
 from ffmc.odds.markets import ALL_MARKETS, build_player_models
 from ffmc.scoring.config import ScoringConfig, scoring_trio
 from ffmc.sim.montecarlo import PlayerModel, ScoreDistribution, simulate_player_multi
@@ -284,6 +284,7 @@ class SlateResult:
     n_games: int
     n_players: int
     games: list[dict] = field(default_factory=list)
+    skipped_games: list[dict] = field(default_factory=list)
     store_path: Optional[str] = None
 
 
@@ -350,15 +351,40 @@ def precompute_slate(
 
     players_out: dict[str, dict] = {}
     games_report: list[dict] = []
+    skipped_games: list[dict] = []
 
     for e in events:
-        payload = client.event_player_props(
-            event_id=e["id"],
-            markets=ALL_MARKETS,
-            sport=sport,
-            bookmakers=book,
-            force_refresh=force_refresh,
-        )
+        try:
+            payload = client.event_player_props(
+                event_id=e["id"],
+                markets=ALL_MARKETS,
+                sport=sport,
+                bookmakers=book,
+                force_refresh=force_refresh,
+            )
+        except OddsAPIError as exc:
+            # A per-event 404 means this game's props are gone -- almost always a
+            # game that has already kicked off (e.g. a Thursday-night game when
+            # the slate is run later in the week). Skip just this game and keep
+            # building the rest of the slate rather than crashing the whole run.
+            # Any other error (auth 401, quota 429, 5xx) is not game-specific and
+            # should still fail loudly.
+            if exc.status_code == 404:
+                print(
+                    f"[slate] skipping {e.get('away_team')} @ {e.get('home_team')} "
+                    f"({e.get('commence_time')}): props unavailable (HTTP 404 -- "
+                    f"game likely already started)"
+                )
+                skipped_games.append(
+                    {
+                        "event_id": e["id"],
+                        "game": f"{e.get('away_team')} @ {e.get('home_team')}",
+                        "commence_time": e.get("commence_time"),
+                        "reason": "props_unavailable_404",
+                    }
+                )
+                continue
+            raise
         models = build_player_models(payload, book_key=book)
         qualifying = {n: m for n, m in models.items() if has_sufficient_data(m)}
         # Drop excluded QBs (v1 has no passing model; see load_qb_exclusions).
@@ -431,6 +457,7 @@ def precompute_slate(
         "correlated": correlated,
         "n_sims": n_sims,
         "games": games_report,
+        "skipped_games": skipped_games,
         "players": players_out,
     }
 
@@ -442,9 +469,10 @@ def precompute_slate(
         book=book,
         scoring=scoring_name,
         correlated=correlated,
-        n_games=len(events),
+        n_games=len(games_report),
         n_players=len(players_out),
         games=games_report,
+        skipped_games=skipped_games,
         store_path=str(store_path),
     )
 

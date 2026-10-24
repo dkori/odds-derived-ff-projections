@@ -27,7 +27,18 @@ DEFAULT_CACHE_DIR = Path("data/cache")
 
 
 class OddsAPIError(RuntimeError):
-    pass
+    """An Odds API request failed.
+
+    Carries the HTTP ``status_code`` (when the failure was an HTTP response)
+    so callers can distinguish a per-event 404 -- a game whose props have been
+    pulled because it already kicked off -- from auth/quota errors (401/429)
+    that should still fail the whole run. ``status_code`` is ``None`` when the
+    error isn't tied to an HTTP response (e.g. a missing API key).
+    """
+
+    def __init__(self, *args, status_code: Optional[int] = None) -> None:
+        super().__init__(*args)
+        self.status_code = status_code
 
 
 class OddsClient:
@@ -62,7 +73,10 @@ class OddsClient:
         params = {**params, "apiKey": self.api_key}
         resp = self._session.get(f"{BASE_URL}{path}", params=params, timeout=30)
         if resp.status_code != 200:
-            raise OddsAPIError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+            raise OddsAPIError(
+                f"HTTP {resp.status_code}: {resp.text[:200]}",
+                status_code=resp.status_code,
+            )
         data = resp.json()
         cache_file.write_text(json.dumps(data))
         # Surface quota usage if the API returned it.
