@@ -13,6 +13,7 @@ venv/
 
 # Secrets & local config
 .env
+.env.bak.*
 *.local
 
 # Cached odds responses (keep dir, ignore contents except samples)
