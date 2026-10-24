@@ -342,7 +342,13 @@ def precompute_slate(
     client = client or OddsClient()
     qb_names = load_qb_exclusions(qb_exclusions_path) if exclude_qbs else set()
 
-    events = client.list_events(sport=sport)  # free endpoint
+    # The /events listing is FREE, so always fetch it fresh. Caching it caused a
+    # real bug: a stale week-old /events snapshot (written by a prior week's run)
+    # was reused, so the current week's late games (Sunday-night, Monday-night)
+    # were missing from the slate entirely -- a slate silently built from the
+    # wrong game list. force_refresh here only re-pulls the free listing; it does
+    # NOT touch the credit-bearing per-event odds cache below.
+    events = client.list_events(sport=sport, force_refresh=True)  # free endpoint
     if event_ids:
         wanted = set(event_ids)
         events = [e for e in events if e["id"] in wanted]
