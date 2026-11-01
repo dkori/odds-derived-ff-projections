@@ -33,6 +33,11 @@ data/cache_archive/
 data/plots/*
 !data/plots/.gitkeep
 
+# DST matchup-ratings study: scraped Yahoo DST projections/actuals (personal
+# league data) + cached nflverse outcomes, ratings snapshots, and predictions.
+# All regenerable; never committed.
+data/dst_matchup/
+
 # Yahoo matchup scrapes: raw pages are PRIVATE (authenticated session content,
 # may embed your account email) and snapshots are personal league data. Never
 # commit either; keep the dirs only.
