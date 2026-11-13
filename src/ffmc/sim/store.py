@@ -64,6 +64,69 @@ def write_weeks_manifest(
     return manifest
 
 
+# Minimum absolute mean move (points) before an intra-week delta is considered
+# a real line move rather than Monte Carlo sampling noise. The slate runs 50k
+# sims, so an unchanged market still jiggles the mean by a few hundredths; this
+# dead-band keeps the UI from flagging every player every refresh. Applied by
+# the UI, but exported here so the threshold lives with the data that defines it.
+DELTA_DEADBAND = 0.3
+
+
+def player_delta_block(
+    rec: dict,
+    baseline: Optional[dict],
+    name: str,
+) -> Optional[dict]:
+    """Per-player intra-week delta vs the week's earliest snapshot.
+
+    ``rec`` is the player's CURRENT store record; ``baseline`` is the dict
+    returned by :meth:`ProjectionsStore.week_open_baseline` (or ``None`` when the
+    week has only one snapshot). Returns ``None`` when there's nothing to compare
+    (single snapshot, or this player wasn't in the baseline — i.e. new this week),
+    otherwise a block the build ships verbatim::
+
+        {
+          "baseline_snapshot_id": "...",
+          "baseline_generated_at": "...",
+          "mean": {scoring: Δmean, ..., "_default": Δmean},
+          "median": {scoring: Δmedian, ..., "_default": Δmedian},
+        }
+
+    Deltas are ``current - baseline`` (positive = projection rose since the week
+    opened), rounded to 2 decimals, per scoring. The UI decides whether a given
+    delta clears :data:`DELTA_DEADBAND` before highlighting it.
+    """
+    if not baseline:
+        return None
+    base_player = baseline["players"].get(name)
+    if not base_player:
+        return None  # new this week — no baseline to diff against
+
+    def _cur(scoring: str, key: str):
+        if scoring == "_default":
+            return rec.get(key)
+        sc = (rec.get("scorings") or {}).get(scoring)
+        return sc.get(key) if sc else None
+
+    mean_d: dict[str, float] = {}
+    median_d: dict[str, float] = {}
+    for scoring, base_vals in base_player.items():
+        cm, bm = _cur(scoring, "mean"), base_vals.get("mean")
+        cmd, bmd = _cur(scoring, "median"), base_vals.get("median")
+        if cm is not None and bm is not None:
+            mean_d[scoring] = round(cm - bm, 2)
+        if cmd is not None and bmd is not None:
+            median_d[scoring] = round(cmd - bmd, 2)
+    if not mean_d and not median_d:
+        return None
+    return {
+        "baseline_snapshot_id": baseline["baseline_snapshot_id"],
+        "baseline_generated_at": baseline["baseline_generated_at"],
+        "mean": mean_d,
+        "median": median_d,
+    }
+
+
 class ProjectionsStore:
     """File-backed reader over the versioned projections layout."""
 
@@ -112,6 +175,58 @@ class ProjectionsStore:
     def load_path(self, path: Path | str) -> dict:
         """Load a snapshot from an explicit file path (back-compat convenience)."""
         return json.loads(Path(path).read_text())
+
+    # -- within-week baseline (for intra-week projection deltas) -----------
+
+    def earliest_snapshot_id(self, week: str) -> Optional[str]:
+        """The oldest snapshot id for a week, or ``None`` if there are none.
+
+        ``index.json`` lists snapshots oldest -> newest, so the baseline a
+        within-week delta compares against (how far a player has moved since the
+        week's lines first opened) is simply the first entry.
+        """
+        snaps = self.list_snapshots(week)
+        return snaps[0]["snapshot_id"] if snaps else None
+
+    def week_open_baseline(self, week: str) -> Optional[dict]:
+        """Per-player mean/median from the EARLIEST snapshot of a week.
+
+        Returns ``None`` when the week has only one snapshot (nothing to compare
+        against yet). Otherwise returns::
+
+            {
+              "baseline_snapshot_id": "<id of the earliest run>",
+              "baseline_generated_at": "<iso timestamp>",
+              "players": { name: { scoring: {"mean": m, "median": md}, ... }, ... },
+            }
+
+        The per-player map carries mean/median for EVERY available scoring (plus a
+        ``"_default"`` alias mirroring the record's top-level fields) so a build
+        can compute a delta under whichever scoring the app is showing. A player
+        present now but absent from the baseline simply won't have an entry — the
+        build treats that as "new this week" (no delta).
+        """
+        snaps = self.list_snapshots(week)
+        if len(snaps) < 2:
+            return None
+        earliest = snaps[0]
+        base_snap = self.load(week, earliest["snapshot_id"])
+        players: dict[str, dict] = {}
+        for name, rec in base_snap.get("players", {}).items():
+            by_scoring: dict[str, dict] = {
+                "_default": {"mean": rec.get("mean"), "median": rec.get("median")}
+            }
+            for sc, sc_rec in (rec.get("scorings") or {}).items():
+                by_scoring[sc] = {
+                    "mean": sc_rec.get("mean"),
+                    "median": sc_rec.get("median"),
+                }
+            players[name] = by_scoring
+        return {
+            "baseline_snapshot_id": earliest["snapshot_id"],
+            "baseline_generated_at": earliest.get("generated_at"),
+            "players": players,
+        }
 
     # -- player access -----------------------------------------------------
 

@@ -30,12 +30,44 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import hashlib
+
 from ffmc.odds.client import OddsClient, OddsAPIError
 from ffmc.odds.markets import ALL_MARKETS, build_player_models
 from ffmc.scoring.config import ScoringConfig, scoring_trio
 from ffmc.sim.montecarlo import PlayerModel, ScoreDistribution, simulate_player_multi
 
 DEFAULT_STORE_DIR = Path("data/projections")
+
+# Default base seed for a slate. A FIXED seed makes a refresh reproducible: two
+# runs over the SAME odds produce byte-identical projections, so any non-zero
+# intra-week delta the UI shows is a genuine line move, not Monte Carlo jitter
+# (with 50k sims an unchanged market still wobbles the mean by a few hundredths,
+# which would otherwise drown real small moves). Each player is seeded
+# independently off this base (see ``_player_seed``) so fixing it does NOT
+# synchronize players' draws — only pins them run-to-run. Pass ``--seed`` to
+# override, or ``--seed`` explicitly to a different value to resample.
+DEFAULT_SLATE_SEED = 20260929
+
+
+def _player_seed(base_seed: Optional[int], name: str) -> Optional[int]:
+    """Derive a stable per-player seed from a base seed and the player's name.
+
+    Returns ``None`` when ``base_seed`` is ``None`` (fully random, pre-seeding
+    behaviour — each run differs). Otherwise mixes the base seed with a stable
+    hash of the normalized name so that:
+      - the same (base_seed, player) always yields the same draws (reproducible
+        across refreshes → zero delta when the odds are unchanged), and
+      - different players get different, uncorrelated seeds (fixing the base does
+        not make everyone draw the same uniforms).
+    Uses blake2b (stable across processes, unlike Python's salted ``hash``) and
+    masks to 63 bits so it's a valid non-negative seed for numpy's SeedSequence.
+    """
+    if base_seed is None:
+        return None
+    key = f"{base_seed}:{_normalize_name(name)}".encode("utf-8")
+    digest = hashlib.blake2b(key, digest_size=8).digest()
+    return int.from_bytes(digest, "big") & ((1 << 63) - 1)
 DEFAULT_QB_EXCLUSIONS = Path("config/qb_exclusions.json")
 
 
@@ -319,7 +351,7 @@ def precompute_slate(
     commence_from: Optional[datetime] = None,
     commence_to: Optional[datetime] = None,
     n_sims: int = 50_000,
-    seed: Optional[int] = None,
+    seed: Optional[int] = DEFAULT_SLATE_SEED,
     correlated: bool = True,
     store_dir: Path | str = DEFAULT_STORE_DIR,
     force_refresh: bool = False,
@@ -406,7 +438,8 @@ def precompute_slate(
             configs = dict(scoring_trio())
             configs[scoring_name] = scoring  # overwrites if already in the trio
             dists = simulate_player_multi(
-                model, configs, n_sims=n_sims, seed=seed, correlated=correlated
+                model, configs, n_sims=n_sims,
+                seed=_player_seed(seed, name), correlated=correlated,
             )
             # The trio block the scoring toggle reads.
             scorings_block = {label: _dist_block(dists[label]) for label in scoring_trio()}
@@ -462,6 +495,7 @@ def precompute_slate(
         "scoring_default": scoring_name if scoring_name in scoring_trio() else "half_ppr",
         "correlated": correlated,
         "n_sims": n_sims,
+        "seed": seed,
         "games": games_report,
         "skipped_games": skipped_games,
         "players": players_out,

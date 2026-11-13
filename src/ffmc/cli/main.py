@@ -121,6 +121,11 @@ def cmd_slate(args: argparse.Namespace) -> int:
         return 0
 
     scoring, scoring_label = _resolve_scoring(args)
+    from ffmc.sim.slate import DEFAULT_SLATE_SEED
+    # Seed the slate by default so refreshes are reproducible (the intra-week
+    # delta the apps show is then a real line move, not Monte Carlo noise). An
+    # explicit --seed still overrides; pass a different value to resample.
+    slate_seed = args.seed if args.seed is not None else DEFAULT_SLATE_SEED
     result = precompute_slate(
         scoring=scoring,
         scoring_name=scoring_label,
@@ -131,7 +136,7 @@ def cmd_slate(args: argparse.Namespace) -> int:
         commence_from=commence_from,
         commence_to=commence_to,
         n_sims=args.sims,
-        seed=args.seed,
+        seed=slate_seed,
         correlated=args.correlated,
         force_refresh=args.force_refresh,
         event_ids=args.event_ids.split(",") if args.event_ids else None,

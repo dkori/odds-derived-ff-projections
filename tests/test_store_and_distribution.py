@@ -259,3 +259,84 @@ def test_store_reader_search_and_names(tmp_path):
     assert res[:2] == ["Josh Allen", "Josh Jacobs"]
     assert store.get_player(week, "AJ Brown")["mean"] == 10.0
     assert store.get_player(week, "Nobody") is None
+
+
+# --- within-week baseline + intra-week delta -----------------------------
+
+
+def _scored_record(name: str, mean: float, median: float) -> dict:
+    """A record carrying both the flat fields and a per-scoring block."""
+    return {
+        "name": name,
+        "mean": mean,
+        "median": median,
+        "scorings": {
+            "half_ppr": {"mean": mean, "median": median},
+            "ppr": {"mean": mean + 1.0, "median": median + 1.0},
+        },
+    }
+
+
+def test_week_open_baseline_none_with_single_snapshot(tmp_path):
+    week = "week9"
+    write_snapshot(_store_dict(week, "2026-11-01T1000Z"), week, store_dir=tmp_path)
+    # One snapshot => nothing to compare against yet.
+    assert ProjectionsStore(tmp_path).week_open_baseline(week) is None
+
+
+def test_week_open_baseline_uses_earliest(tmp_path):
+    week = "week9"
+    s1 = _store_dict(week, "2026-11-01T1000Z")
+    s1["players"] = {"A": _scored_record("A", 10.0, 9.0)}
+    s2 = _store_dict(week, "2026-11-03T1000Z")
+    s2["players"] = {"A": _scored_record("A", 13.0, 11.0)}
+    write_snapshot(s1, week, store_dir=tmp_path)
+    write_snapshot(s2, week, store_dir=tmp_path)
+
+    base = ProjectionsStore(tmp_path).week_open_baseline(week)
+    # Baseline is the EARLIEST snapshot, regardless of write order.
+    assert base["baseline_snapshot_id"] == "2026-11-01T1000Z"
+    assert base["players"]["A"]["half_ppr"]["mean"] == 10.0
+    assert base["players"]["A"]["_default"]["mean"] == 10.0
+
+
+def test_player_delta_block_signs_and_scorings(tmp_path):
+    from ffmc.sim.store import player_delta_block
+
+    week = "week9"
+    s1 = _store_dict(week, "2026-11-01T1000Z")
+    s1["players"] = {"A": _scored_record("A", 10.0, 9.0)}
+    s2 = _store_dict(week, "2026-11-03T1000Z")
+    s2["players"] = {"A": _scored_record("A", 13.0, 11.0)}
+    write_snapshot(s1, week, store_dir=tmp_path)
+    write_snapshot(s2, week, store_dir=tmp_path)
+
+    store = ProjectionsStore(tmp_path)
+    base = store.week_open_baseline(week)
+    cur = store.get_player(week, "A")
+    delta = player_delta_block(cur, base, "A")
+    # Projection rose: positive delta under each scoring.
+    assert delta["mean"]["half_ppr"] == 3.0
+    assert delta["mean"]["ppr"] == 3.0   # both shifted by +3 in the fixture
+    assert delta["median"]["half_ppr"] == 2.0
+    assert delta["baseline_snapshot_id"] == "2026-11-01T1000Z"
+
+
+def test_player_delta_block_new_player_and_no_baseline(tmp_path):
+    from ffmc.sim.store import player_delta_block
+
+    week = "week9"
+    s1 = _store_dict(week, "2026-11-01T1000Z")
+    s1["players"] = {"A": _scored_record("A", 10.0, 9.0)}
+    s2 = _store_dict(week, "2026-11-03T1000Z")
+    s2["players"] = {"A": _scored_record("A", 10.0, 9.0),
+                     "B": _scored_record("B", 7.0, 6.0)}
+    write_snapshot(s1, week, store_dir=tmp_path)
+    write_snapshot(s2, week, store_dir=tmp_path)
+
+    store = ProjectionsStore(tmp_path)
+    base = store.week_open_baseline(week)
+    # "B" is new this week (not in the earliest snapshot) => no delta.
+    assert player_delta_block(store.get_player(week, "B"), base, "B") is None
+    # No baseline at all => no delta.
+    assert player_delta_block(store.get_player(week, "A"), None, "A") is None

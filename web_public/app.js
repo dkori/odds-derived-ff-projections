@@ -102,6 +102,32 @@ function scoringField(rec, key) {
 // A record "view" for charting under the active scoring: the scoring-specific
 // distribution fields spread over the static per-player fields (positions,
 // yahoo_proj, nfl_team, name). Charts read this instead of the raw record.
+
+// Intra-week mean movement for a player under the ACTIVE scoring, measured
+// against the week's first refresh (the baseline shipped in the payload).
+// Returns null when there's no baseline (single refresh so far), the player was
+// new this week (no baseline entry), or the move is within the noise dead-band
+// (DATA.delta_deadband — small enough to be Monte Carlo jitter, not a real line
+// move). Otherwise returns the signed change in projected mean points.
+function meanDeltaFor(name) {
+  const r = DATA.players[name];
+  if (!r || !r.delta || !r.delta.mean) return null;
+  const band = typeof DATA.delta_deadband === 'number' ? DATA.delta_deadband : 0.3;
+  let d = r.delta.mean[activeScoring];
+  if (d == null) d = r.delta.mean['_default'];
+  if (d == null || Math.abs(d) < band) return null;
+  return d;
+}
+
+// Human label for when the baseline was taken (e.g. "since Wed 10:21a").
+function baselineLabel() {
+  if (!DATA.baseline_generated_at) return 'the first refresh this week';
+  const dt = new Date(DATA.baseline_generated_at);
+  if (isNaN(dt)) return 'the first refresh this week';
+  return 'since ' + dt.toLocaleString(undefined,
+    { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+}
+
 function recView(name) {
   const r = DATA.players[name];
   if (!r) return null;
@@ -117,6 +143,7 @@ function recView(name) {
     ceiling_p90: scoringField(r, 'ceiling_p90'),
     quantiles: scoringField(r, 'quantiles'),
     histogram: scoringField(r, 'histogram'),
+    meanDelta: meanDeltaFor(name),
   };
 }
 
@@ -270,6 +297,14 @@ function badge(name) {
     parts.push(`<span class="mini-mean">${meanV.toFixed(1)}</span>`);
   }
   if (label) parts.push(`<span class="mini-pos">${escapeHtml(label)}</span>`);
+  // Small up/down marker so movers are spottable in the pick list without
+  // opening them. Uses the same dead-band as the chip badge.
+  const md = meanDeltaFor(name);
+  if (md != null) {
+    const up = md > 0;
+    parts.push(`<span class="mini-delta ${up ? 'up' : 'down'}" ` +
+      `title="mean ${up ? '+' : ''}${md.toFixed(1)} vs week open">${up ? '▲' : '▼'}</span>`);
+  }
   return parts.length ? ' ' + parts.join(' ') : '';
 }
 
@@ -335,9 +370,20 @@ function renderChips() {
       const yp = activeScoring === 'half_ppr'
         ? (r.yahoo_proj != null ? ` · Yahoo ${r.yahoo_proj.toFixed(1)}` : ' · no Yahoo proj')
         : '';
+      // Intra-week movement badge: ▲/▼ with the signed mean change since the
+      // week's first refresh, shown only when it clears the noise dead-band.
+      let deltaHtml = '';
+      if (r.meanDelta != null) {
+        const up = r.meanDelta > 0;
+        const arrow = up ? '▲' : '▼';
+        deltaHtml = `<span class="chip-delta ${up ? 'up' : 'down'}" ` +
+          `title="projected mean ${up ? 'up' : 'down'} ${Math.abs(r.meanDelta).toFixed(1)} pts ${escapeHtml(baselineLabel())}">` +
+          `${arrow} ${r.meanDelta >= 0 ? '+' : ''}${r.meanDelta.toFixed(1)} vs week open</span>`;
+      }
       return `<div class="chip">
         <span class="chip-name">${escapeHtml(n)}</span>
         <span class="chip-stat">ours: mean ${r.mean.toFixed(1)} · med ${r.median.toFixed(1)}${yp}</span>
+        ${deltaHtml}
         ${posChip}
         <button data-name="${escapeHtml(n)}" class="chip-x">×</button>
       </div>`;
