@@ -26,6 +26,15 @@ from __future__ import annotations
 from .parser import MatchupPage, PlayerLine, parse_matchup_html, parse_matchup_team_names
 from .fetcher import YahooFetcher, YahooFetchError, YahooBlockedError, looks_like_matchup
 from .crawler import LeagueCrawler, CrawlResult, build_matchup_url
+from .roster import (
+    RosterPlayer,
+    RosterCrawler,
+    RosterCrawlResult,
+    parse_roster_html,
+    team_name_from_title,
+    build_roster_url,
+    load_directory_projections,
+)
 from .directory import (
     DirectoryEntry,
     PlayerRow,
@@ -48,6 +57,13 @@ __all__ = [
     "LeagueCrawler",
     "CrawlResult",
     "build_matchup_url",
+    "RosterPlayer",
+    "RosterCrawler",
+    "RosterCrawlResult",
+    "parse_roster_html",
+    "team_name_from_title",
+    "build_roster_url",
+    "load_directory_projections",
     "DirectoryEntry",
     "PlayerRow",
     "YahooDirectory",

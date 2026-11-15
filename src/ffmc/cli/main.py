@@ -163,7 +163,8 @@ def cmd_slate(args: argparse.Namespace) -> int:
 
 
 def cmd_crawl(args: argparse.Namespace) -> int:
-    from ffmc.yahoo import LeagueCrawler, YahooFetcher
+    from ffmc.yahoo import YahooFetcher
+    from ffmc.yahoo.roster import RosterCrawler, load_directory_projections, build_roster_url
     from ffmc.yahoo.league_ids import resolve_league_id, LeagueIdError
 
     try:
@@ -173,39 +174,52 @@ def cmd_crawl(args: argparse.Namespace) -> int:
         return 1
 
     fetcher = YahooFetcher(cookie=args.cookie, season=args.season)
-    crawler = LeagueCrawler(
-        league_id=league_id,
-        season=args.season,
-        fetcher=fetcher,
-        n_teams=args.teams,
-        delay_range=(args.delay_min, args.delay_max),
-    )
     weeks = [int(w) for w in str(args.weeks).split(",")]
+
+    def _directory_path(week: int) -> str:
+        if args.directory:
+            return args.directory
+        season_seg = str(args.season) if args.season is not None else ""
+        return f"{args.out_dir}/{season_seg}/week{week}/position_directory.json"
 
     if args.dry_run:
         print(f"[crawl] DRY RUN — league {league_id}, season {args.season}, "
-              f"{args.teams} teams, weeks {weeks}")
-        total_fetch = total_cached = 0
+              f"{args.teams} teams, weeks {weeks} (roster-page crawl)")
         for week in weeks:
-            plan = crawler.plan_urls(week)
-            cached = sum(1 for *_, c in plan if c)
-            tofetch = len(plan) - cached
-            total_fetch += tofetch
-            total_cached += cached
-            print(f"\n  week {week}: {len(plan)} pages ({cached} cached, {tofetch} to fetch)")
-            for mid1, url, is_c in plan:
-                print(f"    [{'cache' if is_c else 'FETCH'}] mid1={mid1:<2} {url}")
-        print(f"\n[crawl] would make {total_fetch} live request(s); "
-              f"{total_cached} already cached. No network performed.")
+            print(f"\n  week {week}: {args.teams} roster pages")
+            for mid in range(1, args.teams + 1):
+                url = build_roster_url(league_id, mid, args.season)
+                is_c = fetcher.is_cached(url)
+                print(f"    [{'cache' if is_c else 'FETCH'}] mid={mid:<2} {url}")
+            print(f"    projections joined from: {_directory_path(week)}")
+        print("\n[crawl] no network performed.")
         return 0
 
     rc = 0
     for week in weeks:
+        dir_path = _directory_path(week)
+        try:
+            projs = load_directory_projections(dir_path)
+        except FileNotFoundError:
+            print(f"[crawl] week {week}: directory not found at {dir_path} — "
+                  f"run scripts/scrape_position_directory.py first (projections "
+                  f"are joined from it by player id).")
+            rc = 1
+            break
+        crawler = RosterCrawler(
+            league_id=league_id,
+            directory_projs=projs,
+            season=args.season,
+            fetcher=fetcher,
+            n_teams=args.teams,
+            delay_range=(args.delay_min, args.delay_max),
+        )
         result = crawler.crawl_week(week, force_refresh=args.force_refresh)
         path = crawler.write_roster(result, out_dir=args.out_dir)
         status = "BLOCKED" if result.blocked else ("ERROR" if result.error else "ok")
-        print(f"[crawl] week {week}: {len(result.players)} players from "
-              f"{result.teams_seen} team page(s) "
+        n_proj = sum(1 for p in result.players if p.get("projected") is not None)
+        print(f"[crawl] week {week}: {len(result.players)} players "
+              f"({n_proj} with projection) from {result.teams_seen} team page(s) "
               f"({result.pages_fetched} fetched, {result.pages_from_cache} cached) "
               f"-> {path}  [{status}]")
         if result.error:
@@ -401,6 +415,13 @@ def build_parser() -> argparse.ArgumentParser:
     cp.add_argument("--teams", type=int, default=10, help="number of teams in the league")
     cp.add_argument("--cookie", default=None, help="Yahoo cookie (defaults to $YAHOO_COOKIE)")
     cp.add_argument("--out-dir", default="data/yahoo", help="snapshot output directory")
+    cp.add_argument(
+        "--directory", default=None,
+        help="position-directory JSON to join projections from (by player id). "
+             "Defaults to data/yahoo/<season>/week<week>/position_directory.json. "
+             "The roster page's own projection column is unreliable on game day, "
+             "so projections are joined from this pre-lock scrape instead.",
+    )
     cp.add_argument("--delay-min", type=float, default=2.0, help="min seconds between live fetches")
     cp.add_argument("--delay-max", type=float, default=4.0, help="max seconds between live fetches")
     cp.add_argument("--force-refresh", action="store_true", help="re-fetch cached pages")
