@@ -30,7 +30,7 @@ jobs:
   deploy:
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -41,6 +41,18 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: web_public
+      # deploy-pages occasionally fails with "No artifacts named github-pages"
+      # even though the upload step above succeeded (seen on a Week 11 2026
+      # refresh; a later manual dispatch of the same commit worked). So we try
+      # once, wait, and try again before failing the run.
       - name: Deploy to GitHub Pages
         id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+      - name: Wait before retrying deploy
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 30
+      - name: Deploy to GitHub Pages (retry)
+        id: deployment_retry
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v4
